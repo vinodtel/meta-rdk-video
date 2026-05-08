@@ -1,4 +1,4 @@
-SUMMARY = "Thunder from systemd Initialiser Service"
+    SUMMARY = "Thunder from systemd Initialiser Service"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://${WORKDIR}/git/LICENSE;md5=86d3f3a95c324c9479bd8986968f4327"
 
@@ -25,7 +25,7 @@ THUNDER_STARTUP_SERVICES:append = "\
     wpeframework-deviceinfo.service \
     wpeframework-displayinfo.service \
     wpeframework-displaysettings.service \
-    wpeframework-framerate.service \
+    ${@bb.utils.contains('DISTRO_FEATURES', 'RDKE_PLATFORM_TV', 'wpeframework-framerate.service', '', d)} \
     wpeframework-frontpanel.service \
     wpeframework-hdcpprofile.service \
     wpeframework-maintenancemanager.service \
