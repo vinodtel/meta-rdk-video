@@ -121,6 +121,32 @@ EXTRA_OECMAKE:append = "${@bb.utils.contains('BLE_SERVICES', 'true', ' -DBLE_SER
 
 DEPENDS:append = " libevdev"
 
+##################################################
+# RMF Audio Capture Support BEGIN
+# Mirrors the ac_rmf / acm pattern used in bluetooth-mgr_git.bb
+
+RMF_AUDIO_CAPTURE       ??= "true"
+AUDIO_CAPTURE_MANAGER   ??= "true"
+
+# virtual/vendor-media-utils provides librmfAudioCapture + rmfAudioCapture.h
+DEPENDS:append           = "${@bb.utils.contains('RMF_AUDIO_CAPTURE', 'true', ' virtual/vendor-media-utils', '', d)}"
+RDEPENDS:${PN}:append    = "${@bb.utils.contains('RMF_AUDIO_CAPTURE', 'true', ' virtual/vendor-media-utils', '', d)}"
+
+# audiocapturemgr provides audiocapturemgr_iarm.h (ACM IARM path)
+DEPENDS:append           = "${@bb.utils.contains('AUDIO_CAPTURE_MANAGER', 'true', ' audiocapturemgr', '', d)}"
+RDEPENDS:${PN}:append    = "${@bb.utils.contains('AUDIO_CAPTURE_MANAGER', 'true', ' audiocapturemgr', '', d)}"
+
+# Include paths – match CFLAGS used in bluetooth-mgr_git.bb
+CXXFLAGS:append          = "${@bb.utils.contains('RMF_AUDIO_CAPTURE', 'true', ' -I${STAGING_INCDIR}/media-utils -I${STAGING_INCDIR}/media-utils/audioCapture', '', d)}"
+CXXFLAGS:append          = "${@bb.utils.contains('AUDIO_CAPTURE_MANAGER', 'true', ' -I${STAGING_INCDIR}/audiocapturemgr', '', d)}"
+
+# CMake options consumed by control/CMakeLists.txt
+EXTRA_OECMAKE:append     = "${@bb.utils.contains('RMF_AUDIO_CAPTURE', 'true', ' -DRMF_AUDIO_CAPTURE=ON', ' -DRMF_AUDIO_CAPTURE=OFF', d)}"
+EXTRA_OECMAKE:append     = "${@bb.utils.contains('AUDIO_CAPTURE_MANAGER', 'true', ' -DAUDIO_CAPTURE_MANAGER=ON', '', d)}"
+
+# RMF Audio Capture Support END
+##################################################
+
 # Authorization Support
 AUTH                ?= "true"
 EXTRA_OECMAKE:append = "${@bb.utils.contains('AUTH', 'true', ' -DAUTH_ENABLED=ON', '', d)}"
