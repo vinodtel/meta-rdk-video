@@ -7,7 +7,7 @@ PATCHTOOL = "git"
 require wpe-webkit.inc
 
 # Advance with every change in the recipe. Must be a plain integer (no dots, letters, etc.)
-WPE_RECIPE_REVISION = "3"
+WPE_RECIPE_REVISION = "4"
 
 PR = "r${WPE_RECIPE_REVISION}"
 # Micro version suffix - four digits XXYY (XX - PV.micro, YY - WPE_RECIPE_REVISION)
@@ -15,8 +15,8 @@ WPE_MICRO_VERSION_SUFFIX = "${@'%02d%02d' % (int((d.getVar('PV').split('.') + ['
 DEPENDS:append = " libtasn1 unifdef-native libsoup fontconfig"
 PACKAGE_ARCH = "${MIDDLEWARE_ARCH}"
 
-# Tip of the branch on Jun 9, 2026
-SRCREV = "08587fa3eb99834538b31f333e9a7866dcba0b78"
+# Tip of the branch on Jun 25, 2026
+SRCREV = "a38d041877c2ab0a17b5b7178fc6be15ddad0985"
 
 BASE_URI ?= "git://github.com/WebPlatformForEmbedded/WPEWebKit.git;protocol=https;branch=wpe-2.46"
 SRC_URI = "${BASE_URI}"
