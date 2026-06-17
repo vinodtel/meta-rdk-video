@@ -16,7 +16,7 @@ PR = "r0"
 
 require rialto_revision.inc
 
-SRCREV = "4177c67cd07b25215e2b0e8f470adc76452a3b2a"
+SRCREV = "db7f0f65c1173f69f7ce8134e4b6466015217894"
 SRC_URI = "${CMF_GITHUB_ROOT}/rialto;protocol=${CMF_GIT_PROTOCOL};branch=MemLeakFixes19.0"
 SRC_URI += "file://0001-link-rdkgstreamerutilsplatform.patch"
 
