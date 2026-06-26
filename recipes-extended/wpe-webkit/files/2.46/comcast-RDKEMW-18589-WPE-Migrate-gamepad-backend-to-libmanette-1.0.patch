@@ -1,0 +1,306 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Petar Tijanic <Petar_Tijanic@comcast.com>
+Date: Mon, 8 Jun 2026 15:32:45 +0000
+Subject: [PATCH] RDKEMW-16580: [WPE] Migrate gamepad backend to libmanette 1.0
+
+Port the WPE gamepad backend from the libmanette 0.2 ManetteEvent API to
+the 1.0 typed-signal API. Analog triggers are now native axes
+(MANETTE_AXIS_LEFT/RIGHT_TRIGGER) routed through analogButtonChanged().
+Device enumeration uses manette_monitor_list_devices() instead of the
+removed iterator API. Drops GUniquePtrManette.h.
+
+Requires the matching libmanette recipe bump to 1.0 (manette-1, hidapi dep).
+---
+ .../gamepad/manette/GUniquePtrManette.h       |  35 ------
+ .../gamepad/manette/ManetteGamepad.cpp        | 102 ++++++++++--------
+ .../platform/gamepad/manette/ManetteGamepad.h |   1 +
+ .../manette/ManetteGamepadProvider.cpp        |  13 ++-
+ Source/cmake/FindManette.cmake                |   4 +-
+ Source/cmake/OptionsWPE.cmake                 |   2 +-
+ 6 files changed, 70 insertions(+), 87 deletions(-)
+ delete mode 100644 Source/WebCore/platform/gamepad/manette/GUniquePtrManette.h
+
+diff --git a/Source/WebCore/platform/gamepad/manette/GUniquePtrManette.h b/Source/WebCore/platform/gamepad/manette/GUniquePtrManette.h
+deleted file mode 100644
+index 60037d4..0000000
+--- a/Source/WebCore/platform/gamepad/manette/GUniquePtrManette.h
++++ /dev/null
+@@ -1,35 +0,0 @@
+-/*
+- *  Copyright (C) 2020 Igalia S.L
+- *
+- *  This library is free software; you can redistribute it and/or
+- *  modify it under the terms of the GNU Library General Public
+- *  License as published by the Free Software Foundation; either
+- *  version 2 of the License, or (at your option) any later version.
+- *
+- *  This library is distributed in the hope that it will be useful,
+- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- *  Library General Public License for more details.
+- *
+- *  You should have received a copy of the GNU Library General Public License
+- *  along with this library; see the file COPYING.LIB.  If not, write to
+- *  the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+- *  Boston, MA 02110-1301, USA.
+- */
+-
+-#pragma once
+-
+-#include <wtf/Platform.h>
+-
+-#if USE(MANETTE)
+-
+-#include <libmanette.h>
+-#include <wtf/glib/GUniquePtr.h>
+-
+-namespace WTF {
+-
+-WTF_DEFINE_GPTR_DELETER(ManetteMonitorIter, manette_monitor_iter_free)
+-
+-} // namespace WTF
+-
+-#endif // USE(MANETTE)
+diff --git a/Source/WebCore/platform/gamepad/manette/ManetteGamepad.cpp b/Source/WebCore/platform/gamepad/manette/ManetteGamepad.cpp
+index db3848d..f76d2d1 100644
+--- a/Source/WebCore/platform/gamepad/manette/ManetteGamepad.cpp
++++ b/Source/WebCore/platform/gamepad/manette/ManetteGamepad.cpp
+@@ -29,22 +29,21 @@
+ #if ENABLE(GAMEPAD) && OS(LINUX)
+ 
+ #include "ManetteGamepadProvider.h"
+-#include <linux/input-event-codes.h>
+ #include <wtf/HexNumber.h>
+ #include <wtf/text/CString.h>
+ 
+ namespace WebCore {
+ 
+-static ManetteGamepad::StandardGamepadAxis toStandardGamepadAxis(uint16_t axis)
++static ManetteGamepad::StandardGamepadAxis toStandardGamepadAxis(ManetteAxis axis)
+ {
+     switch (axis) {
+-    case ABS_X:
++    case MANETTE_AXIS_LEFT_X:
+         return ManetteGamepad::StandardGamepadAxis::LeftStickX;
+-    case ABS_Y:
++    case MANETTE_AXIS_LEFT_Y:
+         return ManetteGamepad::StandardGamepadAxis::LeftStickY;
+-    case ABS_RX:
++    case MANETTE_AXIS_RIGHT_X:
+         return ManetteGamepad::StandardGamepadAxis::RightStickX;
+-    case ABS_RY:
++    case MANETTE_AXIS_RIGHT_Y:
+         return ManetteGamepad::StandardGamepadAxis::RightStickY;
+     default:
+         break;
+@@ -52,52 +61,52 @@ static ManetteGamepad::StandardGamepadAxis toStandardGamepadAxis(uint16_t axis)
+     return ManetteGamepad::StandardGamepadAxis::Unknown;
+ }
+ 
+-static void onAbsoluteAxisEvent(ManetteDevice* device, ManetteEvent* event, ManetteGamepad* gamepad)
++static void onAbsoluteAxisChanged(ManetteDevice* device, ManetteAxis axis, double value, ManetteGamepad* gamepad)
+ {
+-    uint16_t axis;
+-    double value;
+-    if (!manette_event_get_absolute(event, &axis, &value))
++    if (axis == MANETTE_AXIS_LEFT_TRIGGER) {
++        gamepad->analogButtonChanged(device, ManetteGamepad::StandardGamepadButton::LeftTrigger, value);
+         return;
++    }
++    if (axis == MANETTE_AXIS_RIGHT_TRIGGER) {
++        gamepad->analogButtonChanged(device, ManetteGamepad::StandardGamepadButton::RightTrigger, value);
++        return;
++    }
+ 
+     gamepad->absoluteAxisChanged(device, toStandardGamepadAxis(axis), value);
+ }
+ 
+-static ManetteGamepad::StandardGamepadButton toStandardGamepadButton(uint16_t manetteButton)
++static ManetteGamepad::StandardGamepadButton toStandardGamepadButton(ManetteButton button)
+ {
+-    switch (manetteButton) {
+-    case BTN_A:
++    switch (button) {
++    case MANETTE_BUTTON_SOUTH:
+         return ManetteGamepad::StandardGamepadButton::A;
+-    case BTN_B:
++    case MANETTE_BUTTON_EAST:
+         return ManetteGamepad::StandardGamepadButton::B;
+-    case BTN_X:
++    case MANETTE_BUTTON_WEST:
+         return ManetteGamepad::StandardGamepadButton::X;
+-    case BTN_Y:
++    case MANETTE_BUTTON_NORTH:
+         return ManetteGamepad::StandardGamepadButton::Y;
+-    case BTN_TL:
++    case MANETTE_BUTTON_LEFT_SHOULDER:
+         return ManetteGamepad::StandardGamepadButton::LeftShoulder;
+-    case BTN_TR:
++    case MANETTE_BUTTON_RIGHT_SHOULDER:
+         return ManetteGamepad::StandardGamepadButton::RightShoulder;
+-    case BTN_TL2:
+-        return ManetteGamepad::StandardGamepadButton::LeftTrigger;
+-    case BTN_TR2:
+-        return ManetteGamepad::StandardGamepadButton::RightTrigger;
+-    case BTN_SELECT:
++    case MANETTE_BUTTON_SELECT:
+         return ManetteGamepad::StandardGamepadButton::Select;
+-    case BTN_START:
++    case MANETTE_BUTTON_START:
+         return ManetteGamepad::StandardGamepadButton::Start;
+-    case BTN_THUMBL:
++    case MANETTE_BUTTON_LEFT_STICK:
+         return ManetteGamepad::StandardGamepadButton::LeftStick;
+-    case BTN_THUMBR:
++    case MANETTE_BUTTON_RIGHT_STICK:
+         return ManetteGamepad::StandardGamepadButton::RightStick;
+-    case BTN_DPAD_UP:
++    case MANETTE_BUTTON_DPAD_UP:
+         return ManetteGamepad::StandardGamepadButton::DPadUp;
+-    case BTN_DPAD_DOWN:
++    case MANETTE_BUTTON_DPAD_DOWN:
+         return ManetteGamepad::StandardGamepadButton::DPadDown;
+-    case BTN_DPAD_LEFT:
++    case MANETTE_BUTTON_DPAD_LEFT:
+         return ManetteGamepad::StandardGamepadButton::DPadLeft;
+-    case BTN_DPAD_RIGHT:
++    case MANETTE_BUTTON_DPAD_RIGHT:
+         return ManetteGamepad::StandardGamepadButton::DPadRight;
+-    case BTN_MODE:
++    case MANETTE_BUTTON_MODE:
+         return ManetteGamepad::StandardGamepadButton::Mode;
+     default:
+         break;
+@@ -105,21 +116,13 @@ static ManetteGamepad::StandardGamepadButton toStandardGamepadButton(uint16_t ma
+     return ManetteGamepad::StandardGamepadButton::Unknown;
+ }
+ 
+-static void onButtonPressEvent(ManetteDevice* device, ManetteEvent* event, ManetteGamepad* gamepad)
++static void onButtonPressed(ManetteDevice* device, ManetteButton button, ManetteGamepad* gamepad)
+ {
+-    uint16_t button;
+-    if (!manette_event_get_button(event, &button))
+-        return;
+-
+     gamepad->buttonPressedOrReleased(device, toStandardGamepadButton(button), true);
+ }
+ 
+-static void onButtonReleaseEvent(ManetteDevice* device, ManetteEvent* event, ManetteGamepad* gamepad)
++static void onButtonReleased(ManetteDevice* device, ManetteButton button, ManetteGamepad* gamepad)
+ {
+-    uint16_t button;
+-    if (!manette_event_get_button(event, &button))
+-        return;
+-
+     gamepad->buttonPressedOrReleased(device, toStandardGamepadButton(button), false);
+ }
+ 
+@@ -147,9 +150,9 @@ ManetteGamepad::ManetteGamepad(ManetteDevice* device, unsigned index)
+     if (manette_device_has_rumble(m_device.get()))
+         m_supportedEffectTypes.add(GamepadHapticEffectType::DualRumble);
+ 
+-    g_signal_connect(device, "button-press-event", G_CALLBACK(onButtonPressEvent), this);
+-    g_signal_connect(device, "button-release-event", G_CALLBACK(onButtonReleaseEvent), this);
+-    g_signal_connect(device, "absolute-axis-event", G_CALLBACK(onAbsoluteAxisEvent), this);
++    g_signal_connect(device, "button-pressed", G_CALLBACK(onButtonPressed), this);
++    g_signal_connect(device, "button-released", G_CALLBACK(onButtonReleased), this);
++    g_signal_connect(device, "absolute-axis-changed", G_CALLBACK(onAbsoluteAxisChanged), this);
+ }
+ 
+ ManetteGamepad::~ManetteGamepad()
+@@ -168,6 +171,17 @@ void ManetteGamepad::buttonPressedOrReleased(ManetteDevice*, StandardGamepadButt
+     ManetteGamepadProvider::singleton().gamepadHadInput(*this, pressed ? ManetteGamepadProvider::ShouldMakeGamepadsVisible::Yes : ManetteGamepadProvider::ShouldMakeGamepadsVisible::No);
+ }
+ 
++void ManetteGamepad::analogButtonChanged(ManetteDevice*, StandardGamepadButton button, double value)
++{
++    if (button == StandardGamepadButton::Unknown)
++        return;
++
++    m_lastUpdateTime = MonotonicTime::now();
++    m_buttonValues[static_cast<int>(button)].setValue(clampTo(value, 0.0, 1.0));
++
++    ManetteGamepadProvider::singleton().gamepadHadInput(*this, ManetteGamepadProvider::ShouldMakeGamepadsVisible::Yes);
++}
++
+ void ManetteGamepad::absoluteAxisChanged(ManetteDevice*, StandardGamepadAxis axis, double value)
+ {
+     if (axis == StandardGamepadAxis::Unknown)
+diff --git a/Source/WebCore/platform/gamepad/manette/ManetteGamepad.h b/Source/WebCore/platform/gamepad/manette/ManetteGamepad.h
+index 193c105..f46d8a5 100644
+--- a/Source/WebCore/platform/gamepad/manette/ManetteGamepad.h
++++ b/Source/WebCore/platform/gamepad/manette/ManetteGamepad.h
+@@ -74,6 +74,7 @@ public:
+ 
+     void absoluteAxisChanged(ManetteDevice*, StandardGamepadAxis, double value);
+     void buttonPressedOrReleased(ManetteDevice*, StandardGamepadButton, bool pressed);
++    void analogButtonChanged(ManetteDevice*, StandardGamepadButton, double value);
+ 
+ private:
+     const Vector<SharedGamepadValue>& axisValues() const final { return m_axisValues; }
+diff --git a/Source/WebCore/platform/gamepad/manette/ManetteGamepadProvider.cpp b/Source/WebCore/platform/gamepad/manette/ManetteGamepadProvider.cpp
+index 0296ddc..58a8bb1 100644
+--- a/Source/WebCore/platform/gamepad/manette/ManetteGamepadProvider.cpp
++++ b/Source/WebCore/platform/gamepad/manette/ManetteGamepadProvider.cpp
+@@ -29,7 +29,6 @@
+ 
+ #if ENABLE(GAMEPAD) && OS(LINUX)
+ 
+-#include "GUniquePtrManette.h"
+ #include "GamepadProviderClient.h"
+ #include "Logging.h"
+ #include "ManetteGamepad.h"
+@@ -90,10 +89,11 @@ void ManetteGamepadProvider::startMonitoringGamepads(GamepadProviderClient& clie
+     m_initialGamepadsConnectedTimer.startOneShot(connectionDelayInterval);
+ 
+     RunLoop::current().dispatch([this] {
+-        ManetteDevice* device;
+-        GUniquePtr<ManetteMonitorIter> iter(manette_monitor_iterate(m_monitor.get()));
+-        while (manette_monitor_iter_next(iter.get(), &device))
+-            deviceConnected(device);
++        gsize numDevices = 0;
++        ManetteDevice** devices = manette_monitor_list_devices(m_monitor.get(), &numDevices);
++        for (gsize i = 0; i < numDevices; i++)
++            deviceConnected(devices[i]);
++        g_free(devices);
+     });
+ }
+ 
+diff --git a/Source/cmake/FindManette.cmake b/Source/cmake/FindManette.cmake
+index 5c1551c..e35121a 100644
+--- a/Source/cmake/FindManette.cmake
++++ b/Source/cmake/FindManette.cmake
+@@ -53,7 +53,7 @@ This will define the following variables in your project:
+ #]=======================================================================]
+ 
+ find_package(PkgConfig QUIET)
+-pkg_check_modules(PC_MANETTE QUIET manette-0.2)
++pkg_check_modules(PC_MANETTE QUIET manette-1)
+ set(Manette_COMPILE_OPTIONS ${PC_MANETTE_CFLAGS_OTHER})
+ set(Manette_VERSION ${PC_MANETTE_VERSION})
+ 
+@@ -64,7 +64,7 @@ find_path(Manette_INCLUDE_DIR
+ )
+ 
+ find_library(Manette_LIBRARY
+-    NAMES ${Manette_NAMES} manette-0.2
++    NAMES ${Manette_NAMES} manette-1
+     HINTS ${PC_MANETTE_LIBDIR}
+           ${PC_MANETTE_LIBRARY_DIRS}
+ )
+diff --git a/Source/cmake/OptionsWPE.cmake b/Source/cmake/OptionsWPE.cmake
+index d9ad9bb..8bc90d9 100644
+--- a/Source/cmake/OptionsWPE.cmake
++++ b/Source/cmake/OptionsWPE.cmake
+@@ -233,7 +233,7 @@ if (ENABLE_GAMEPAD AND (NOT (WPE_VERSION VERSION_GREATER_EQUAL 1.16.2)))
+ endif ()
+ 
+ if (ENABLE_GAMEPAD)
+-    find_package(Manette 0.2.4)
++    find_package(Manette 1.0)
+     if (NOT Manette_FOUND)
+         message(FATAL_ERROR "libmanette is required for ENABLE_GAMEPAD")
+     endif ()
+-- 
+2.34.1
+
