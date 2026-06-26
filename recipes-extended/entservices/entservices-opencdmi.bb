@@ -2,7 +2,7 @@ SUMMARY = "ENTServices opencdmi plugins"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=c03d0e6d700b63b51bf8da6b61dac850"
 
-PV = "1.0.6"
+PV = "1.0.7"
 PR = "r0"
 
 S = "${WORKDIR}/git"
@@ -15,10 +15,8 @@ SRC_URI = "${CMF_GITHUB_ROOT}/entservices-opencdmi;${CMF_GITHUB_SRC_URI_SUFFIX} 
            file://rdkservices.ini \
           "
           
-# Release version - 1.0.6
-#SRCREV = "e9ec1482a1d5e2302433c24b2bf9b6a921525c15"
-# feature/RDKEMW-19729-ocdm-client-migration
-SRCREV = "33c6c9b0a9d1f95294f617d8c8ce11002b0d7501"
+# Release version - 1.0.7
+SRCREV = "ecab76687d443b0bca111dde337f59b3cb51515e"
 
 PACKAGE_ARCH = "${MIDDLEWARE_ARCH}" 
 TOOLCHAIN = "gcc"
