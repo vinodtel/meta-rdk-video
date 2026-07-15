@@ -13,7 +13,7 @@ SRC_URI = "git://github.com/vinodtel/entservices-powermanager;${CMF_GITHUB_SRC_U
           "
 
 # Release version - 1.4.7
-SRCREV = "924d72b6974967859ffa44d66eb9860a2aa08541"
+SRCREV = "8e3e84f5dce7ed248f344151b0bd07e2bdc1fa32"
 SRCREV:vdevice_x86-64-mw = "8e3e84f5dce7ed248f344151b0bd07e2bdc1fa32"
 
 PACKAGE_ARCH = "${MIDDLEWARE_ARCH}"
@@ -24,6 +24,7 @@ EXTRA_OECMAKE += "${@bb.utils.contains_any('DISTRO_FEATURES', '${DISTRO_FEATURES
 
 EXTRA_OECMAKE += " -DENABLE_RFC_MANAGER=ON"
 EXTRA_OECMAKE += " -DBUILD_ENABLE_THERMAL_PROTECTION=ON "
+EXTRA_OECMAKE += " -DAIDL_DEEPSLEEP_INCLUDE_DIR=${STAGING_INCDIR}"
 EXTRA_OECMAKE:append:vdevice_x86-64-mw = " \
     -DENABLE_POWERMANAGER_AIDL=ON \
     -DPOWERMANAGER_AIDL_STAGING_INCLUDE_DIR=${STAGING_INCDIR} \
@@ -32,10 +33,19 @@ EXTRA_OECMAKE:append:vdevice_x86-64-mw = " \
 "
 
 DEPENDS += "power-manager-headers wpeframework wpeframework-tools-native"
+DEPENDS += " rdk-halif-aidl libbinder"
+DEPENDS:remove:vdevice_x86-64-mw = "rdk-halif-aidl"
 DEPENDS:append:vdevice_x86-64-mw = " deepsleep-vendor libbinder"
+
+# boot-vendor must finish its AIDL generation before configure, but adding it to
+# DEPENDS causes its sysroot payload to collide with headers already staged by
+# other providers. Keep it as a task dependency only so the generated files are
+# available under TMPDIR/work without extending this recipe's sysroot from it.
+do_configure:vdevice_x86-64-mw[depends] += " boot-vendor:do_populate_sysroot"
 
 # Feed CMake the HAL and generated AIDL include roots through the recipe-level
 # toolchain flags. These are consumed when cmake generates the build system.
+CXXFLAGS += " -I${STAGING_INCDIR}/binder -I${STAGING_INCDIR}/android -Wno-error=unknown-pragmas -Wno-error=format"
 CXXFLAGS:append:vdevice_x86-64-mw = " -I${WORKDIR}/aidl-headers -I${STAGING_INCDIR}/rdk/halif/power-manager -I${STAGING_INCDIR}/rdk/halif/deepsleep-manager -I${STAGING_INCDIR}/binder -I${STAGING_INCDIR}/android -Wno-error=unknown-pragmas -Wno-error=format"
 RDEPENDS:${PN} += "wpeframework"
 
@@ -134,12 +144,10 @@ do_configure:prepend:vdevice_x86-64-mw() {
 
     BOOT_CUR_DIR=$(dirname "$(dirname "$(dirname "$(dirname "${BOOT_CPP_DIR}")")")")
     BOOT_HDR_DIR="${BOOT_CUR_DIR}/h"
-    BOOT_HELPER_DIR="${WORKDIR}/aidl-headers/com/rdk/hal/boot"
     if [ ! -d "${BOOT_HDR_DIR}/com" ]; then
         bbfatal "Unable to locate generated AIDL headers for boot-vendor under ${BOOT_HDR_DIR}"
     fi
 
-    install -d "${BOOT_HELPER_DIR}"
     cp -r "${BOOT_HDR_DIR}/com" "${WORKDIR}/aidl-headers/"
 }
 
@@ -199,4 +207,3 @@ FILES:${PN} += "${libdir}/wpeframework/plugins/*.so ${libdir}/*.so ${datadir}/WP
 
 INSANE_SKIP:${PN} += "libdir staticdev dev-so dev-deps"
 INSANE_SKIP:${PN}-dbg += "libdir"
-
