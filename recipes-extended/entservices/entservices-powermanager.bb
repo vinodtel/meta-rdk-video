@@ -13,8 +13,8 @@ SRC_URI = "git://github.com/vinodtel/entservices-powermanager;${CMF_GITHUB_SRC_U
           "
 
 # Release version - 1.4.7
-SRCREV = "f5161fea126d3641f64f679376274e22e3d4a7a0"
-SRCREV:vdevice_x86-64-mw = "f5161fea126d3641f64f679376274e22e3d4a7a0"
+SRCREV = "084d7c294c885e1f465d762bbd7c4253b503fdc3"
+SRCREV:vdevice_x86-64-mw = "084d7c294c885e1f465d762bbd7c4253b503fdc3"
 
 PACKAGE_ARCH = "${MIDDLEWARE_ARCH}"
 
